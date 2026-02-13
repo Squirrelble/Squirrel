@@ -1,6 +1,7 @@
 package view
 
 import (
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"io"
@@ -19,6 +20,31 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
+
+// 将截图文件转换为base64 data URI，确保HTML内嵌图片可正常显示
+func screenshotToDataURI(screenshotPath string) string {
+	if screenshotPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(screenshotPath)
+	if err != nil {
+		data, err = os.ReadFile(filepath.Join(".", screenshotPath))
+		if err != nil {
+			return ""
+		}
+	}
+	encoded := base64.StdEncoding.EncodeToString(data)
+	ext := strings.ToLower(filepath.Ext(screenshotPath))
+	mimeType := "image/jpeg"
+	if ext == ".png" {
+		mimeType = "image/png"
+	} else if ext == ".gif" {
+		mimeType = "image/gif"
+	} else if ext == ".webp" {
+		mimeType = "image/webp"
+	}
+	return "data:" + mimeType + ";base64," + encoded
+}
 
 // 显示进度
 func ShowProgress(processed *int32, totalDomains int, startTime time.Time, doneChan, progressDone chan struct{}) {
@@ -267,7 +293,7 @@ func SaveResultsToExcel(results []checker.Result, filename string, onlyAlive boo
 			PageType:     pageType,
 			Title:        title,
 			Message:      result.Message,
-			Screenshot:   screenshot,
+			Screenshot:   template.URL(screenshot),
 			Alive:        result.Alive,
 		})
 
@@ -379,7 +405,7 @@ type TemplateResult struct {
 	PageType     string
 	Title        string
 	Message      string
-	Screenshot   string
+	Screenshot   template.URL
 	Alive        bool
 }
 
@@ -431,17 +457,11 @@ func SaveResultsToSimpleHTML(results []checker.Result, filename string, onlyAliv
 			domainLink = "http://" + domainLink
 		}
 
-		// 处理截图路径
+		// 处理截图路径 - 转换为base64 data URI内嵌到HTML中
 		screenshot := ""
 		if result.Screenshot != "" {
-			// 使用相对路径
-			screenshot = filepath.Join("screenshots", filepath.Base(result.Screenshot))
-			// 将路径分隔符转换为正斜杠，确保在HTML中正确显示
-			screenshot = strings.ReplaceAll(screenshot, "\\", "/")
-			// 确保路径以screenshots/开头
-			if !strings.HasPrefix(screenshot, "screenshots/") {
-				screenshot = "screenshots/" + filepath.Base(screenshot)
-			}
+			screenshotFile := filepath.Join("screenshots", filepath.Base(result.Screenshot))
+			screenshot = screenshotToDataURI(screenshotFile)
 		}
 
 		// 处理标题编码
@@ -468,7 +488,7 @@ func SaveResultsToSimpleHTML(results []checker.Result, filename string, onlyAliv
 			PageType:     pageType,
 			Title:        title,
 			Message:      result.Message,
-			Screenshot:   screenshot,
+			Screenshot:   template.URL(screenshot),
 			Alive:        result.Alive,
 		})
 	}
